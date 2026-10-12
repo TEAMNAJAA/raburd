@@ -11,7 +11,7 @@ import {
   buildUserContent,
   composeOfflineAnswer,
   createKnowledge,
-  needById,
+  learnFromUsage,
   summarizeUsage,
   GENERAL_NEED,
 } from "./public/engine.js";
@@ -72,12 +72,8 @@ export function createApp(options = {}) {
 
   let kb;
   const rebuild = () => {
-    const label = (id) => needById({ needs: base.needs }, id).label;
-    kb = createKnowledge({
-      ...base,
-      cases: [...base.cases, ...store.learnedCases(label)],
-      feedback: store.feedback(),
-    });
+    const usage = learnFromUsage(store.records(), base.needs);
+    kb = createKnowledge({ ...base, cases: [...base.cases, ...usage.cases], feedback: usage.feedback });
   };
   rebuild();
   // system prompt ขึ้นกับประเภทความต้องการและโปรไฟล์เท่านั้น จึงคงที่ทั้ง process (prompt cache ใช้ซ้ำได้)
@@ -231,11 +227,11 @@ export function createApp(options = {}) {
   }
 
   function insights(res) {
-    const asks = store.asks();
-    const summary = summarizeUsage(kb, asks, store.feedback());
+    const usage = learnFromUsage(store.records(), base.needs);
+    const summary = summarizeUsage(kb, usage.asks, usage.feedback);
     if (showQuestions) {
-      const fb = new Map(store.feedback().map((f) => [f.id, f]));
-      summary.recent = asks
+      const fb = new Map(usage.feedback.map((f) => [f.id, f]));
+      summary.recent = usage.asks
         .slice(-15)
         .reverse()
         .map((a) => ({ question: a.question, ts: a.ts, need: a.needs?.[0], helpful: fb.get(a.id)?.helpful ?? null }));

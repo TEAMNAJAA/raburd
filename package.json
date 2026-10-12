@@ -12,7 +12,8 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node --test test/*.test.js",
-    "import-history": "node scripts/import-history.js"
+    "import-history": "node scripts/import-history.js",
+    "build:artifact": "node scripts/build-artifact.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0"

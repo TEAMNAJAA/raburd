@@ -78,6 +78,18 @@ npm run import-history -- ~/.claude/projects/<โปรเจกต์>/
 แล้วเขียนลง `.data/knowledge/imported.json` (ส่วนตัว ไม่เข้า git) — รีสตาร์ตเซิร์ฟเวอร์เพื่อโหลด
 ใส่ `--public` ถ้าต้องการให้ไปอยู่ใน `public/data/knowledge/` (จะถูกเผยแพร่ไปกับเว็บ ตรวจเนื้อหาก่อน)
 
+## หน้าเว็บที่เปิดได้ทันที (ใน Claude)
+
+```bash
+npm run build:artifact      # → dist/raburd-artifact.html (ไฟล์เดียว รวม HTML/CSS/JS/ฐานความรู้)
+```
+
+ไฟล์นี้เผยแพร่เป็นหน้าเว็บใน Claude (Artifact) ได้ โดยประกาศความสามารถ
+`{"sample": {}, "db": {"rules": [{"path": "usage", "read": "interact", "write": "interact"}]}}`
+— Claude ตอบผ่านบัญชีของผู้เปิดหน้า (ไม่ต้องมี API key, ขออนุญาตครั้งแรกที่ถาม)
+และคำถาม/ผลโหวตถูกเก็บใน collection `usage` ของหน้า ซึ่งอ่าน-เขียนได้เฉพาะเจ้าของและผู้มีสิทธิ์ Contributor ขึ้นไป
+ถ้าผู้ชมไม่อนุญาตให้ใช้ Claude หน้าเว็บจะตอบจากฐานความรู้แทน
+
 ## Deploy แบบ static (เช่น GitHub Pages)
 
 โฟลเดอร์ `public/` ใช้งานได้โดยไม่ต้องมีเซิร์ฟเวอร์: หน้าเว็บจะตรวจว่าไม่มี `api/` แล้วคำนวณการค้นเคสและอ่านความต้องการในเบราว์เซอร์
@@ -101,6 +113,7 @@ public/engine.js             แกนกลาง (ใช้ทั้งเซ�
 public/app.js, markdown.js   หน้าเว็บ
 public/data/                 ฐานความรู้จากการใช้งานจริง
 scripts/import-history.js    นำเข้าประวัติ claude.ai / Claude Code
+scripts/build-artifact.js    รวมเป็นไฟล์เดียวสำหรับหน้าเว็บใน Claude
 test/                        npm test
 ```
 

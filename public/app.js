@@ -4,18 +4,24 @@ import * as engine from "./engine.js";
 const $ = (sel, root = document) => root.querySelector(sel);
 const SOURCE_LABEL = { "claude-history": "ประวัติ Claude", "site-usage": "คำถามในเว็บ", docs: "คู่มือเว็บ" };
 const MAX_HISTORY = 6;
+const MAX_STORED_ANSWER = 20000;
 
 const state = {
   backend: null,
   knowledge: null, // { needs, profile, cases }
   history: [],
   busy: false,
+  controller: null,
   filter: "all",
 };
 
-// ---------------------------------------------------------------- backends
+// ทำงานได้ 3 แบบ ด้วยโค้ดชุดเดียว
+//   server    — มี server.js: ค้นเคส + เรียก Claude ฝั่งเซิร์ฟเวอร์ (API key อยู่ที่เซิร์ฟเวอร์)
+//   artifact  — เปิดใน Claude: ค้นเคสในเบราว์เซอร์, Claude ตอบผ่านบัญชีของผู้เปิดหน้า, บันทึกการใช้งานใน db ของหน้า
+//   static    — ไฟล์ล้วน (เช่น GitHub Pages): ตอบจากฐานความรู้, บันทึกในเบราว์เซอร์ของผู้ใช้แต่ละคน
 
-// เซิร์ฟเวอร์ Node (มี Claude / บันทึกการใช้งานจริงลงไฟล์)
+// ---------------------------------------------------------------- server backend
+
 function serverBackend(status) {
   return {
     mode: status.mode,
@@ -34,11 +40,12 @@ function serverBackend(status) {
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ส่งผลโหวตไม่สำเร็จ");
     },
-    async ask(question, history, on) {
+    async ask(question, history, on, signal) {
       const res = await fetch("api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question, history }),
+        signal,
       });
       if (!res.ok || !res.body) {
         const err = await res.json().catch(() => ({}));
@@ -68,66 +75,221 @@ function serverBackend(status) {
   };
 }
 
-// โหมด static (เช่น GitHub Pages): คำนวณในเบราว์เซอร์ ผลโหวตเก็บในเครื่องผู้ใช้
-async function staticBackend() {
+// ---------------------------------------------------------------- client backend (artifact / static)
+
+// ฐานความรู้: ฝังมากับหน้า (artifact) หรือโหลดจากไฟล์ใน data/ (static)
+async function loadBase() {
+  const inline = document.getElementById("raburd-data");
+  if (inline) return JSON.parse(inline.textContent);
   const [needs, profile, index] = await Promise.all([
     getJson("data/needs.json"),
     getJson("data/profile.json"),
     getJson("data/knowledge/index.json"),
   ]);
   const files = await Promise.all(index.files.map((f) => getJson(`data/knowledge/${f}`)));
-  const base = { needs: needs.needs, profile, cases: files.flatMap((f) => f.cases || []) };
-  const local = {
-    read(key) {
-      try {
-        return JSON.parse(localStorage.getItem(key) || "[]");
-      } catch {
-        return [];
-      }
-    },
-    write(key, value) {
-      try {
-        localStorage.setItem(key, JSON.stringify(value));
-      } catch {
-        // โหมดส่วนตัว / ปิด storage — ใช้งานต่อได้แค่ไม่จำผลโหวต
-      }
-    },
+  return { needs: needs.needs, profile, cases: files.flatMap((f) => f.cases || []) };
+}
+
+// บันทึกการใช้งาน: หนึ่งแถวต่อคำถาม { id, question, ts, needs, answer, answerMode, helpful, need, note }
+function localUsage() {
+  const KEY = "raburd.usage.v1";
+  const read = () => {
+    try {
+      return JSON.parse(localStorage.getItem(KEY) || "[]");
+    } catch {
+      return [];
+    }
   };
-  const ASKS = "raburd.asks.v1";
-  const FEEDBACK = "raburd.feedback.v1";
-  const build = () => {
-    const asks = local.read(ASKS);
-    const detected = new Map(asks.map((a) => [a.id, a.needs?.[0]]));
-    const feedback = local.read(FEEDBACK).map((f) => ({ ...f, detected: detected.get(f.id) }));
-    return engine.createKnowledge({ ...base, feedback });
-  };
-  let kb = build();
   return {
-    mode: "static",
+    kind: "local",
+    async load() {
+      return read();
+    },
+    async put(id, patch) {
+      const rows = read();
+      const i = rows.findIndex((r) => r.id === id);
+      if (i < 0) rows.push({ id, ...patch });
+      else rows[i] = { ...rows[i], ...patch };
+      try {
+        localStorage.setItem(KEY, JSON.stringify(rows.slice(-300)));
+      } catch {
+        // โหมดส่วนตัว / ปิด storage — ใช้งานต่อได้ แค่ไม่จำ
+      }
+    },
+  };
+}
+
+// บันทึกลง db ของหน้า (ถาวร ใช้ร่วมกันระหว่างผู้ที่มีสิทธิ์ และ Claude อ่านกลับได้)
+function dbUsage(db) {
+  const col = db.collection("usage");
+  const saved = new Set();
+  const queue = new Map(); // เขียนเอกสารเดียวกันทีละครั้ง
+  return {
+    kind: "db",
+    async load() {
+      const snap = await col.orderBy("ts", "desc").limit(500).get();
+      for (const d of snap.docs) saved.add(d.id);
+      return snap.docs.map((d) => ({ ...d.data(), id: d.id })).reverse();
+    },
+    put(id, patch) {
+      const ref = col.doc(id);
+      const run = () => (saved.has(id) ? ref.update(patch) : ref.set(patch).then(() => saved.add(id)));
+      const next = (queue.get(id) || Promise.resolve()).catch(() => {}).then(run);
+      queue.set(id, next);
+      return next;
+    },
+  };
+}
+
+const HIDE_CLAUDE = new Set(["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"]);
+
+function sampleErrorText(code) {
+  switch (code) {
+    case "not_granted":
+      return "ยังไม่ได้อนุญาตให้หน้านี้ใช้ Claude";
+    case "sampling_disabled":
+      return "บัญชีนี้ใช้ Claude ในหน้าเว็บไม่ได้";
+    case "rate_limited":
+      return "ใช้ Claude ถี่เกินไปหรือถึงขีดจำกัดการใช้งาน ลองใหม่ภายหลัง";
+    case "session_expired":
+      return "ต้องเข้าสู่ระบบ Claude ใหม่";
+    case "refused":
+      return "Claude ไม่ตอบคำถามนี้";
+    case "prompt_too_large":
+      return "บทสนทนายาวเกินไป กด “เริ่มใหม่” แล้วถามอีกครั้ง";
+    default:
+      return "เรียก Claude ไม่สำเร็จ";
+  }
+}
+
+function clientBackend({ base, usage, sample, onModeChange = () => {} }) {
+  let rows = [];
+  let kb;
+  let claudeOn = Boolean(sample);
+  let saveFailed = false;
+  const rebuild = () => {
+    const learned = engine.learnFromUsage(rows, base.needs);
+    kb = engine.createKnowledge({ ...base, cases: [...base.cases, ...learned.cases], feedback: learned.feedback });
+    return learned;
+  };
+  rebuild();
+  const ready = usage
+    .load()
+    .then((r) => {
+      rows = r;
+      rebuild();
+    })
+    .catch(() => {});
+
+  const save = (id, patch) => {
+    const i = rows.findIndex((r) => r.id === id);
+    if (i < 0) rows.push({ id, ...patch });
+    else rows[i] = { ...rows[i], ...patch };
+    return Promise.resolve(usage.put(id, patch)).catch(() => {
+      saveFailed = true; // เช่น ผู้ชมที่มีสิทธิ์ดูอย่างเดียว — ใช้งานต่อได้ แต่ไม่ถูกบันทึก
+    });
+  };
+
+  // Claude ในหน้าเว็บไม่มี system prompt: ใส่คำสั่งเป็น user turn แรก แล้วต่อด้วยบทสนทนา
+  const buildInput = (analysis, history) => {
+    const rules = engine.buildSystemPrompt(kb);
+    const content = engine.buildUserContent(analysis, kb);
+    if (!history.length) return `${rules}\n\n${content}`;
+    return [
+      { role: "user", content: `${rules}\n\nต่อจากนี้คือบทสนทนา ตอบเฉพาะคำถามล่าสุด` },
+      ...history.flatMap((t) => [
+        { role: "user", content: t.q },
+        { role: "assistant", content: t.a },
+      ]),
+      { role: "user", content },
+    ];
+  };
+
+  return {
+    get mode() {
+      return claudeOn ? "artifact" : "static";
+    },
+    model: null,
+    get saving() {
+      return usage.kind === "db" && !saveFailed;
+    },
+    ready,
     async knowledge() {
-      return base;
+      await ready;
+      return { needs: base.needs, profile: base.profile, cases: kb.cases };
     },
     async insights() {
-      return engine.summarizeUsage(kb, local.read(ASKS), local.read(FEEDBACK));
+      await ready;
+      const learned = engine.learnFromUsage(rows, base.needs);
+      return engine.summarizeUsage(kb, learned.asks, learned.feedback);
     },
     async feedback(payload) {
-      const list = local.read(FEEDBACK).filter((f) => f.id !== payload.id);
-      list.push(payload);
-      local.write(FEEDBACK, list);
-      kb = build();
+      if (!rows.some((r) => r.id === payload.id)) return; // คำถามจากก่อนเปิดใช้ Claude/db — ไม่มีแถวให้บันทึก
+      await save(payload.id, { helpful: payload.helpful, need: payload.need || null, note: payload.note || "" });
+      rebuild();
+      if (saveFailed && usage.kind === "db") throw new Error("บันทึกผลโหวตไม่ได้ — บัญชีนี้มีสิทธิ์ดูอย่างเดียว");
     },
-    async ask(question, history, on) {
-      const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+    async ask(question, history, on, signal) {
+      await ready;
+      const id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const analysis = engine.analyze(question, kb, { context: history.at(-1)?.q || "" });
+      const useClaude = claudeOn;
       on.analysis({
         id,
-        mode: "static",
+        mode: useClaude ? "artifact" : "static",
         needs: analysis.needs,
         cases: analysis.cases.map((c) => ({ ...c.case, similarity: c.similarity })),
       });
-      on.delta({ text: engine.composeOfflineAnswer(analysis, kb) });
-      local.write(ASKS, [...local.read(ASKS), { id, question, needs: analysis.needs.map((n) => n.id), ts: new Date().toISOString() }].slice(-200));
-      on.done({ id, mode: "static" });
+      save(id, {
+        question,
+        ts: new Date().toISOString(),
+        needs: analysis.needs.map((n) => n.id),
+        cases: analysis.cases.map((c) => ({ id: c.case.id, similarity: c.similarity })),
+        mode: useClaude ? "claude" : "offline",
+      });
+
+      let text = "";
+      let answerMode = "offline";
+      const offline = () => engine.composeOfflineAnswer(analysis, kb);
+      if (useClaude) {
+        try {
+          const res = await sample(buildInput(analysis, history), {
+            cache: false,
+            signal,
+            onText: ({ text: t }) => on.replace({ text: t }),
+          });
+          text = res.text;
+          answerMode = res.truncated ? "claude-partial" : "claude";
+          on.replace({ text });
+          if (res.truncated) on.notice({ message: "คำตอบยาวเกินกำหนดและถูกตัดท้าย" });
+        } catch (e) {
+          const code = e?.code || "upstream_error";
+          if (code === "cancelled") {
+            text = e.text || "";
+            answerMode = "claude-partial";
+            on.replace({ text });
+            on.notice({ message: "หยุดคำตอบแล้ว" });
+          } else if (e?.text && code !== "refused") {
+            text = e.text;
+            answerMode = "claude-partial";
+            on.replace({ text });
+            on.notice({ message: `${sampleErrorText(code)} — คำตอบถูกตัดกลางทาง` });
+          } else {
+            if (HIDE_CLAUDE.has(code)) {
+              claudeOn = false;
+              onModeChange();
+            }
+            text = offline();
+            on.notice({ message: `${sampleErrorText(code)} — แสดงคำตอบจากฐานความรู้แทน` });
+            on.replace({ text });
+          }
+        }
+      } else {
+        text = offline();
+        on.delta({ text });
+      }
+      save(id, { answer: text.slice(0, MAX_STORED_ANSWER), answerMode });
+      on.done({ id, mode: answerMode });
     },
   };
 }
@@ -159,16 +321,24 @@ function sourceTag(source) {
   return `<span class="src ${esc(source)}">${esc(SOURCE_LABEL[source] || source)}</span>`;
 }
 
-function setStatus(mode, model) {
+const STATUS = {
+  claude: ["ตอบด้วย Claude", (m) => `Claude (${m}) ตอบผ่านเซิร์ฟเวอร์ของเว็บนี้`],
+  artifact: ["ตอบด้วย Claude", () => "Claude ตอบผ่านบัญชี Claude ของผู้เปิดหน้านี้ (ถามครั้งแรกจะขออนุญาตก่อน)"],
+  offline: ["โหมดฐานความรู้", () => "ยังไม่ได้เชื่อม Claude — ตอบจากเคสการใช้งานจริงในฐานความรู้ และไม่เดาเมื่อไม่มีเคสที่ใกล้พอ"],
+  static: ["โหมดฐานความรู้", () => "ตอบจากเคสการใช้งานจริงในฐานความรู้ และไม่เดาเมื่อไม่มีเคสที่ใกล้พอ"],
+};
+
+function setStatus() {
+  const b = state.backend;
+  const [label, detail] = STATUS[b.mode] || STATUS.static;
   const el = $("#status");
-  el.dataset.mode = mode;
-  el.textContent =
-    mode === "claude" ? "ตอบด้วย Claude" : mode === "offline" ? "โหมดฐานความรู้" : "โหมด static · ฐานความรู้";
-  el.title =
-    mode === "claude"
-      ? `โมเดล ${model}`
-      : "ยังไม่ได้เชื่อม Claude API — ตอบจากเคสการใช้งานจริงในฐานความรู้ และจะไม่เดาเมื่อไม่มีเคสที่ใกล้พอ";
-  $("#foot-mode").textContent = mode === "claude" ? `โมเดล: ${model}` : el.title;
+  el.dataset.mode = b.mode;
+  el.textContent = label;
+  el.title = detail(b.model);
+  const saving = b.mode === "claude" || b.mode === "offline" || b.saving
+    ? "บันทึกคำถามและผลโหวตเป็นข้อมูลการใช้งานจริง"
+    : "ผลโหวตจำไว้ในเบราว์เซอร์นี้เท่านั้น";
+  $("#foot-mode").textContent = `${detail(b.model)} · ${saving}`;
 }
 
 // ---------------------------------------------------------------- ask view
@@ -234,8 +404,8 @@ function feedbackUi(turn, id, detected) {
   const send = async (payload) => {
     try {
       await state.backend.feedback({ id, ...payload });
-      box.innerHTML = `<span class="thanks">ขอบคุณ — บันทึกเป็นข้อมูลการใช้งานจริงแล้ว ${
-        payload.helpful ? "คำถามนี้จะใช้อ้างอิงคำถามถัดไป" : "ระบบจะใช้แก้การอ่านความต้องการครั้งหน้า"
+      box.innerHTML = `<span class="thanks">ขอบคุณ — บันทึกแล้ว ${
+        payload.helpful ? "ระบบจะใช้ผลนี้อ่านความต้องการของคำถามที่คล้ายกัน" : "ระบบจะใช้แก้การอ่านความต้องการครั้งหน้า"
       }</span>`;
     } catch (err) {
       box.insertAdjacentHTML("beforeend", `<span class="notice">${esc(err.message)}</span>`);
@@ -275,7 +445,9 @@ function feedbackUi(turn, id, detected) {
 async function askQuestion(question) {
   if (state.busy || !question.trim()) return;
   state.busy = true;
-  $("#send").disabled = true;
+  state.controller = new AbortController();
+  $("#send").textContent = "หยุด";
+  $("#send").classList.add("stop");
   $("#intro").hidden = true;
   $("#reset").hidden = false;
 
@@ -290,7 +462,7 @@ async function askQuestion(question) {
   answer.innerHTML = `<span class="thinking">กำลังคิดคำตอบ…</span>`;
   turn.append(reading, answer);
   $("#thread").append(turn);
-  turn.scrollIntoView({ behavior: "smooth", block: "start" });
+  turn.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
 
   let text = "";
   let id = null;
@@ -305,7 +477,10 @@ async function askQuestion(question) {
   };
 
   try {
-    await state.backend.ask(question, state.history, {
+    await state.backend.ask(
+      question,
+      state.history,
+      {
       analysis(a) {
         id = a.id;
         detected = a.needs[0]?.id;
@@ -332,7 +507,9 @@ async function askQuestion(question) {
         answer.after(box);
       },
       done() {},
-    });
+      },
+      state.controller.signal,
+    );
     if (frame) cancelAnimationFrame(frame);
     paint();
     if (text.trim()) {
@@ -340,11 +517,20 @@ async function askQuestion(question) {
     }
     if (id) feedbackUi(turn, id, detected);
   } catch (err) {
-    answer.innerHTML = `<p class="notice">${esc(err.message || "เกิดข้อผิดพลาด")}</p>`;
+    if (err?.name === "AbortError") {
+      if (frame) cancelAnimationFrame(frame);
+      paint();
+      answer.insertAdjacentHTML("beforebegin", `<div class="notice">หยุดคำตอบแล้ว</div>`);
+      if (id) feedbackUi(turn, id, detected);
+    } else {
+      answer.innerHTML = `<p class="notice">${esc(err.message || "เกิดข้อผิดพลาด")}</p>`;
+    }
   } finally {
     answer.classList.remove("loading");
     state.busy = false;
-    $("#send").disabled = false;
+    state.controller = null;
+    $("#send").textContent = "ถาม";
+    $("#send").classList.remove("stop");
     $("#question").focus();
   }
 }
@@ -462,28 +648,48 @@ function autosize() {
   t.style.height = Math.min(t.scrollHeight, window.innerHeight * 0.4) + "px";
 }
 
+async function useBackend(backend) {
+  state.backend = backend;
+  setStatus();
+  state.knowledge = await backend.knowledge();
+  renderExamples();
+  if (!$("#view-insights").hidden) renderInsights();
+}
+
 async function init() {
+  // เปิดใน Claude: แสดงหน้าได้ทันทีจากฐานความรู้ แล้วเปิดใช้ Claude + บันทึกการใช้งานเมื่อพร้อม
+  if (window.claude?.use) {
+    const base = await loadBase();
+    await useBackend(clientBackend({ base, usage: localUsage(), sample: null }));
+    const use = (name) => window.claude.use(name).catch(() => null);
+    const [sample, db] = await Promise.all([use("sample"), use("db")]);
+    if (sample || db) {
+      const backend = clientBackend({ base, usage: db ? dbUsage(db) : localUsage(), sample, onModeChange: setStatus });
+      await backend.ready;
+      await useBackend(backend);
+    }
+    return;
+  }
   try {
     const status = await getJson("api/status");
     if (!status.ok) throw new Error();
-    state.backend = serverBackend(status);
+    await useBackend(serverBackend(status));
   } catch {
     try {
-      state.backend = await staticBackend();
+      await useBackend(clientBackend({ base: await loadBase(), usage: localUsage(), sample: null }));
     } catch (err) {
-      setStatus("static");
       $("#status").textContent = "โหลดข้อมูลไม่ได้";
       console.error(err);
-      return;
     }
   }
-  setStatus(state.backend.mode, state.backend.model);
-  state.knowledge = await state.backend.knowledge();
-  renderExamples();
 }
 
 $("#composer").addEventListener("submit", (e) => {
   e.preventDefault();
+  if (state.busy) {
+    state.controller?.abort();
+    return;
+  }
   const q = $("#question").value.trim();
   if (!q || !state.backend) return;
   $("#question").value = "";

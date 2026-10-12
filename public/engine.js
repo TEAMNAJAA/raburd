@@ -400,6 +400,46 @@ export function composeOfflineAnswer(analysis, kb) {
 }
 
 // ---------------------------------------------------------------------------
+// เรียนรู้จากการใช้งานจริงของเว็บ
+// records: [{ id, question, ts, needs, answer, answerMode, helpful, need, note }] — หนึ่งแถวต่อคำถาม
+// 👍 = คำถาม + คำตอบที่ Claude เขียน ใช้อ้างอิงได้ / 👎 + ความต้องการจริง = อ้างอิงเฉพาะความต้องการ
+// คำตอบโหมดฐานความรู้ประกอบจากเคสเดิมอยู่แล้ว ถ้าเก็บซ้ำจะได้คำตอบที่อ้างตัวเองวนไปเรื่อย ๆ จึงไม่เก็บ
+
+const MAX_LEARNED_ANSWER = 2500;
+
+export function learnFromUsage(records, needs = []) {
+  const label = (id) => (needs.find((n) => n.id === id) || GENERAL_NEED).label;
+  const asks = [];
+  const feedback = [];
+  const cases = [];
+  for (const r of records) {
+    if (!r || !r.id || typeof r.question !== "string") continue;
+    const detected = r.needs?.[0];
+    asks.push({ id: r.id, question: r.question, needs: r.needs || [], ts: r.ts });
+    if (typeof r.helpful !== "boolean") continue;
+    feedback.push({ id: r.id, helpful: r.helpful, need: r.need || null, detected });
+    const need = r.need || (r.helpful ? detected : null);
+    if (!need) continue;
+    const useAnswer = r.helpful && r.answerMode === "claude" && r.answer;
+    cases.push({
+      id: "site-" + r.id,
+      source: "site-usage",
+      date: String(r.ts || "").slice(0, 10),
+      project: "",
+      question: r.question,
+      variants: [],
+      needs: [need],
+      real_need: r.note || label(need),
+      answer: useAnswer ? String(r.answer).slice(0, MAX_LEARNED_ANSWER) : "",
+      outcome: r.helpful ? "ผู้ถามยืนยันว่าตรงความต้องการ" : "ผู้ถามบอกว่าคำตอบไม่ตรง และระบุความต้องการจริง",
+      lesson: r.helpful ? "" : `ระบบเคยอ่านว่าเป็น “${label(detected)}” แต่จริง ๆ ต้องการ “${label(need)}”`,
+      tags: [],
+    });
+  }
+  return { asks, feedback, cases };
+}
+
+// ---------------------------------------------------------------------------
 // สรุปภาพรวมการใช้งานจริง
 
 // คำกริยา/คำเชื่อมที่พบทุกคำถาม ไม่บอกว่าผู้ใช้สนใจเรื่องอะไร

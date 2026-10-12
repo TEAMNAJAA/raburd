@@ -60,6 +60,7 @@ test("อ่านความต้องการหลักได้ตร�
     ["ทำต่อจากเมื่อวาน", "continue"],
     ["attention คืออะไร", "explain"],
     ["ควรใช้ Adam หรือ SGD ดี", "decide"],
+    ["ควรใช้ Adam หรือ SGD ดี สำหรับเทรนใน kaggle", "decide"],
   ];
   for (const [q, need] of expect) assert.equal(top(q).needs[0].id, need, q);
 });
