@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>raburd — ตอบตรงสิ่งที่ต้องการ</title>
+    <meta name="description" content="ถาม-ตอบที่อ่านความต้องการจริงของคำถาม โดยอ้างอิงข้อมูลจากการใช้งานจริง" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <header class="top">
+      <a class="brand" href="./" aria-label="raburd หน้าแรก">
+        <span class="mark" aria-hidden="true">ร</span>
+        <span class="name">raburd</span>
+      </a>
+      <nav class="tabs" role="tablist" aria-label="มุมมอง">
+        <button role="tab" id="tab-ask" aria-controls="view-ask" aria-selected="true">ถามคำถาม</button>
+        <button role="tab" id="tab-insights" aria-controls="view-insights" aria-selected="false">ข้อมูลการใช้งานจริง</button>
+      </nav>
+      <span class="status" id="status" role="status">กำลังเชื่อมต่อ…</span>
+    </header>
+
+    <main>
+      <section id="view-ask" role="tabpanel" aria-labelledby="tab-ask">
+        <div class="intro" id="intro">
+          <h1>ถามได้เลย — ระบบจะอ่านก่อนว่าคุณ<em>ต้องการอะไรจริง ๆ</em></h1>
+          <p>
+            ทุกคำถามถูกเทียบกับคำถามจริงที่เคยถาม (ประวัติการใช้ Claude และคำถามในเว็บนี้)
+            เพื่อดูว่าคนที่ถามแบบนี้ต้องการ <b>ไฟล์ที่ใช้ได้ทันที</b>, <b>คำตอบสั้น</b>, <b>หลักฐานว่าใช้ได้</b> หรืออย่างอื่น
+            แล้วจึงตอบให้ตรงรูปแบบนั้น — พร้อมแสดงเหตุผลและเคสที่ใช้อ้างอิงทุกครั้ง
+          </p>
+          <div class="examples" id="examples" aria-label="ตัวอย่างคำถามจากการใช้งานจริง"></div>
+        </div>
+
+        <ol class="thread" id="thread" aria-live="polite"></ol>
+
+        <form class="composer" id="composer">
+          <label class="sr-only" for="question">คำถาม</label>
+          <textarea id="question" rows="1" maxlength="4000" placeholder="พิมพ์คำถาม… (Enter ส่ง · Shift+Enter ขึ้นบรรทัดใหม่)" required></textarea>
+          <div class="composer-actions">
+            <button type="button" class="ghost" id="reset" hidden>เริ่มใหม่</button>
+            <button type="submit" class="primary" id="send">ถาม</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="view-insights" role="tabpanel" aria-labelledby="tab-insights" hidden>
+        <div class="insights-head">
+          <h1>ข้อมูลการใช้งานจริงที่เว็บใช้อ้างอิง</h1>
+          <p>ภาพรวมของคำถามจริง ความต้องการที่พบ และผลโหวตว่าคำตอบตรงความต้องการหรือไม่</p>
+        </div>
+        <div class="kpis" id="kpis"></div>
+        <div class="grid">
+          <article class="card">
+            <h2>ความต้องการที่พบบ่อย</h2>
+            <div class="legend"><span class="sw sw-history"></span>ประวัติ Claude <span class="sw sw-site"></span>คำถามในเว็บ</div>
+            <div id="need-bars" class="bars"></div>
+          </article>
+          <article class="card">
+            <h2>สิ่งที่รู้จากประวัติการใช้งาน</h2>
+            <div id="profile"></div>
+          </article>
+          <article class="card">
+            <h2>คำที่ถามบ่อย</h2>
+            <div id="terms" class="terms"></div>
+          </article>
+          <article class="card" id="recent-card" hidden>
+            <h2>คำถามล่าสุดในเว็บ</h2>
+            <ol id="recent" class="recent"></ol>
+          </article>
+        </div>
+        <article class="card cases-card">
+          <div class="cases-head">
+            <h2>คำถามจริงในฐานความรู้</h2>
+            <div class="filters" id="filters" role="group" aria-label="กรองตามแหล่งที่มา"></div>
+          </div>
+          <div id="cases" class="cases"></div>
+        </article>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <span id="foot-mode"></span>
+      <span>ข้อมูลอ้างอิงมาจากประวัติการใช้งานจริง · ตรวจสอบเหตุผลได้ทุกคำตอบ</span>
+    </footer>
+  </body>
+</html>

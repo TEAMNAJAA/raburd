@@ -1,0 +1,20 @@
+{
+  "name": "raburd",
+  "version": "1.0.0",
+  "private": true,
+  "description": "เว็บถาม-ตอบที่อ้างอิงความต้องการจริงจากประวัติการใช้งาน",
+  "type": "module",
+  "main": "server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test test/*.test.js",
+    "import-history": "node scripts/import-history.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0"
+  }
+}

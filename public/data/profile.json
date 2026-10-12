@@ -1,0 +1,25 @@
+{
+  "_about": "โปรไฟล์ผู้ใช้ที่สรุปจากประวัติการใช้งาน Claude จริง (2 เซสชัน, ก.ย. 2026) — ใช้ช่วยตีความว่าคำถามสั้น ๆ หมายถึงอะไร ไม่มีข้อมูลระบุตัวตน",
+  "language": "ไทย พิมพ์สั้น ภาษาพูดไม่เป็นทางการ มักพิมพ์ 'เเ' แทน 'แ' และสะกดคำอังกฤษตามเสียง (เช่น advacne = advance, ฟีลเจอ = feature)",
+  "domains": [
+    "แข่ง AI/ML ในค่าย NextGen AI Camp 2026 (โจทย์รายวัน เช่น Flood Damage, EchoVision)",
+    "computer vision จากภาพถ่ายทางอากาศ และ multimodal (ภาพ + เสียง ultrasonic)",
+    "งานเว็บ/แอปอื่น ๆ ในองค์กร TEAMNAJAA บน GitHub"
+  ],
+  "environment": [
+    "เทรนบน Kaggle notebook หรือเครื่องที่ค่ายให้ (มี GPU)",
+    "PyTorch + numpy + pandas + opencv + scikit-learn",
+    "กติกาค่าย: ห้ามใช้ pretrained weights และข้อมูลภายนอก ต้องสร้างสถาปัตยกรรมเองและเทรนจากศูนย์",
+    "โค้ดเก็บใน GitHub org TEAMNAJAA (เช่น repo Nextgen)"
+  ],
+  "preferences": [
+    "อยากได้ไฟล์ที่รันได้ทันที (.ipynb / .py) มากกว่าคำอธิบาย",
+    "ถ้าขอ 'แบบง่าย' = ไฟล์เดียว layer พื้นฐาน เช่น double conv + linear ไม่เอาเทคนิค advanced",
+    "ถ้าขอ 'สั้นๆ' = รายการไม่กี่บรรทัด",
+    "ถามว่า 'ใช้ได้ไหม' = อยากเห็นผลวัดจริงเทียบ baseline",
+    "ชอบให้กำหนดค่าเริ่มต้นเป็น dict ชัด ๆ ตอนต้นโค้ด"
+  ],
+  "recurring_issues": [
+    "push ขึ้น GitHub ไม่ได้ (403) เพราะ Claude GitHub App ยังไม่มีสิทธิ์เขียน repo ใน org TEAMNAJAA — สถานะ ณ 12 ต.ค. 2026: repo ใน org (รวม Nextgen) แสดง can_push = true แล้ว"
+  ]
+}

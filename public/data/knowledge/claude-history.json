@@ -1,0 +1,322 @@
+{
+  "_about": "คำถามจริงจากประวัติการใช้งาน Claude ของผู้ใช้ (Claude Code บนเว็บ, 3–6 ก.ย. 2026 และ 12 ต.ค. 2026) สรุปเป็นเคส: คำถามตามที่ถามจริง (ตัดคำหยาบ/ข้อมูลส่วนตัวออก), ความต้องการจริงที่ดูจากพฤติกรรมหลังได้คำตอบ, คำตอบที่ได้, และบทเรียน — 'variants' คือคำถามแบบอื่นที่หมายถึงเรื่องเดียวกัน ใช้ช่วยจับคู่เท่านั้น",
+  "cases": [
+    {
+      "id": "flood-train-pipeline",
+      "source": "claude-history",
+      "session": "เขียน train สำหรับเครื่อง",
+      "date": "2026-09-05",
+      "project": "Nextgen · Flood Damage Day 1",
+      "question": "เขียน train มาให้ใช้ในเครื่อง (แนบ PDF โจทย์ Flood Damage Day 1)",
+      "variants": [
+        "เขียนโค้ดเทรนโมเดลให้หน่อย",
+        "ขอโค้ด train โมเดลจากภาพถ่ายทางอากาศ",
+        "ทำ pipeline เทรน flood damage",
+        "เขียน training script สำหรับโจทย์ในค่าย",
+        "train model flood damage aerial images"
+      ],
+      "needs": [
+        "deliverable"
+      ],
+      "real_need": "โค้ดเทรนที่รันบนเครื่องของค่ายได้ทันทีตั้งแต่โหลดข้อมูลจนได้ submission.csv และต้องไม่ผิดกติกา (ห้าม pretrained / ห้ามข้อมูลนอก)",
+      "answer": "โจทย์: multi-task VQA บนภาพถ่ายทางอากาศ 3 คำถามต่อภาพ — จำนวนอาคาร (ตอบตรงเป๊ะ = accuracy), ความหนาแน่น (macro F1), สัดส่วนพื้นที่น้ำท่วม (RMSE)\n\nสิ่งที่ส่งให้: ไปป์ไลน์เต็ม `src/` (data, model, train, engine, metrics, predict) + `notebooks/flood_damage_day1.ipynb` แบบ self-contained\n\n```bash\npip install -r requirements.txt\npython src/train.py   --data-root ~/d1/dataset --out-dir runs/base --epochs 60\npython src/predict.py --data-root ~/d1/dataset --ckpt runs/base/model_base.pt --out submission.csv\n```\n\nจุดออกแบบตาม metric:\n- นับอาคาร → ใช้ **classification** ต่อจำนวน (เพราะต้องตอบตรงเป๊ะ) + regression `log1p(count)` เป็น auxiliary\n- ความหนาแน่น → class weight แบบ inverse-√freq + จูน logit adjustment บน val\n- สัดส่วนน้ำท่วม → sigmoid + MSE ให้ตรงกับ RMSE\n- augmentation ใช้แค่หมุน/พลิก 8 ท่า **ไม่ใช้ random crop** เพราะครอปแล้วจำนวนอาคารและสัดส่วนน้ำท่วมเปลี่ยน = label เพี้ยน\n- ResNet เขียนเอง init สุ่ม (ไม่มี pretrained), mean/std คำนวณจาก train เอง\n- สลับเป็น 5-fold + ensemble ได้ด้วย `--folds 5`\n\nทดสอบแล้วบนข้อมูลปลอม: train → k-fold → ensemble predict → ตรวจฟอร์แมต submission ผ่าน",
+      "outcome": "ส่งไฟล์ให้ในแชทได้ แต่ push ขึ้น GitHub ไม่ได้ (403)",
+      "lesson": "ผู้ใช้กลับมาขอ 'แบบง่าย ไม่ advance' ในอีก ~6 ชั่วโมง → เวอร์ชันเต็ม (ResNet-SE, k-fold, EMA) เกินกว่าที่ต้องการ ครั้งหน้าควรเริ่มจากเวอร์ชันง่ายที่รันจบก่อน แล้วค่อยเสนอส่วนเสริม",
+      "tags": [
+        "pytorch",
+        "computer vision",
+        "aerial",
+        "flood",
+        "multi-task",
+        "kaggle",
+        "nextgen ai camp",
+        "training",
+        "no pretrained"
+      ]
+    },
+    {
+      "id": "flood-simple-version",
+      "source": "claude-history",
+      "session": "เขียน train สำหรับเครื่อง",
+      "date": "2026-09-05",
+      "project": "Nextgen · Flood Damage Day 1",
+      "question": "ลองทำแบบเก็บค่าเป็น dict ตอนเริ่ม เช่น A = {How many buildings are in this image?: COUNTING, What is the building density in this image?: DENSITY, What proportion of the image shows flood damage?: DAMAGE} ฟีเจอร์ข้างในแค่ double conv และ linear ทำแบบปกติไม่ advance — path รูปคือ d1/images คอลัมน์ filename, train.csv / val.csv / test.csv — ทำแบบง่าย ๆ: data, dataloader, training, predict, submission",
+      "variants": [
+        "ทำโมเดล AI แบบง่ายๆ ไม่ advance",
+        "ขอแบบง่ายๆ ไม่ advanced",
+        "ทำโมเดลง่ายๆ double conv กับ linear",
+        "ขอโค้ด AI แบบพื้นฐานไฟล์เดียว",
+        "simple pytorch model data dataloader training predict submission",
+        "เขียนใหม่ให้ง่ายกว่านี้"
+      ],
+      "needs": [
+        "simplify",
+        "deliverable"
+      ],
+      "real_need": "เวอร์ชันที่อ่านเข้าใจและแก้เองได้: ไฟล์เดียว, โครงสร้าง 5 ขั้นตามที่บอก, ใช้แค่ double conv + linear, ค่าคงที่อยู่ใน dict ด้านบน",
+      "answer": "ส่ง `simple/flood_simple.py` (ไฟล์เดียวจบ) + `notebooks/flood_simple.ipynb` 12 cell เรียงตาม 5 ขั้นที่ขอ:\n\n1. **DATA** — อ่าน csv แล้วใช้ dict `A` แปลงคำถาม → คีย์ (COUNTING / DENSITY / DAMAGE) ยุบ 3 แถวต่อภาพให้เหลือ 1 แถวต่อภาพ\n2. **DATASET + DATALOADER** — `FloodDataset` อ่านรูปจาก `d1/images/<filename>`\n3. **MODEL** — `DoubleConv` ซ้อนกัน แล้วต่อ linear 3 หัว (นับอาคาร = classification ตามจำนวนที่พบใน train, ความหนาแน่น = classification, น้ำท่วม = regression 0–1) ~1.2M พารามิเตอร์\n4. **TRAINING** — วัด accuracy / macro F1 / RMSE ทุก epoch แล้วเซฟโมเดลที่คะแนนดีสุด\n5. **PREDICT → submission.csv** — 3 แถวต่อภาพ (filename, question, answer)\n\nทดสอบรันจบบนข้อมูลปลอม และตรวจฟอร์แมต submission ผ่าน (48 แถว / 16 ภาพ)",
+      "outcome": "ส่งไฟล์ให้ในแชท ผู้ใช้ใช้ต่อและถามคำถามติดตามเกี่ยวกับ cell",
+      "lesson": "ทำตามโครงสร้างที่ผู้ใช้พิมพ์มาเป๊ะ ๆ (dict, ชื่อขั้นตอน, path) = ตรงความต้องการมากกว่าออกแบบใหม่เอง",
+      "tags": [
+        "pytorch",
+        "simple",
+        "double conv",
+        "linear",
+        "dict",
+        "dataloader",
+        "submission",
+        "flood",
+        "notebook"
+      ]
+    },
+    {
+      "id": "flood-simple-cells",
+      "source": "claude-history",
+      "session": "เขียน train สำหรับเครื่อง",
+      "date": "2026-09-06",
+      "project": "Nextgen · Flood Damage Day 1",
+      "question": "บอกมาสั้นๆ ว่าขั้นตอนในการทำ flood simple มี cell อะไรบ้าง",
+      "variants": [
+        "notebook มีกี่ cell อะไรบ้าง",
+        "สรุปขั้นตอนในโน้ตบุ๊กให้หน่อย",
+        "flood simple มีขั้นตอนอะไรบ้าง",
+        "steps in the simple notebook"
+      ],
+      "needs": [
+        "brief"
+      ],
+      "real_need": "รายการ cell เรียงลำดับ อ่านจบในไม่กี่วินาที เพื่อเอาไปอธิบาย/นำเสนอ",
+      "answer": "`flood_simple.ipynb` มี 12 cell = หัวข้อ markdown + โค้ด 5 ขั้น:\n\n1. หัวเรื่อง + `import`\n2. **DATA** — `load_data()` อ่าน csv ยุบ 3 แถว → 1 แถวต่อภาพ\n3. **DATASET + DATALOADER** — `FloodDataset`\n4. **MODEL** — `DoubleConv` ซ้อน + linear 3 หัว\n5. **TRAINING** — วัด F1 / accuracy / RMSE เซฟ best\n6. **PREDICT** — โหลด weight → เขียน `submission.csv`",
+      "outcome": "ได้รายการ cell; ในเทิร์นเดียวกันมีข้อความเรื่อง push 403 ปนมาด้วย",
+      "lesson": "คำถาม 'บอกมาสั้นๆ' ควรได้แค่รายการ ข้อมูลที่ไม่ได้ถาม (เช่น สถานะ push) ไม่ควรปนมาในคำตอบ",
+      "tags": [
+        "notebook",
+        "cells",
+        "steps",
+        "summary",
+        "flood simple"
+      ]
+    },
+    {
+      "id": "echovision-handoff",
+      "source": "claude-history",
+      "session": "New session (EchoVision)",
+      "date": "2026-09-03",
+      "project": "Nextgen · EchoVision",
+      "question": "(แนบไฟล์ HANDOFF_EchoVision_Day2.md โดยไม่พิมพ์ข้อความ — ส่งต่องานจากแชทก่อน)",
+      "variants": [
+        "ทำต่อจากที่ค้างไว้",
+        "อ่าน handoff แล้วทำต่อ",
+        "ต่องานเมื่อวาน",
+        "continue from the handoff file",
+        "รอบก่อน F1 ได้เท่านี้ ทำไงต่อ"
+      ],
+      "needs": [
+        "continue",
+        "decide"
+      ],
+      "real_need": "ทำงานต่อทันทีโดยไม่ต้องเล่าใหม่",
+      "answer": "อ่านจบ พร้อมทำต่อ — **val weighted F1 ล่าสุด (รอบ NN-only) ได้เท่าไหร่?**\n\n- < 0.55 → ต่อ end-to-end / เอา GAP 512-d มาใช้\n- 0.55–0.70 → 5-fold CV + จูน class weight บน OOF\n- > 0.70 → focal / soft-F1 + self-training",
+      "outcome": "ผู้ใช้ไม่ได้ตอบตัวเลข แต่ส่ง PDF โจทย์มาแล้วสั่งให้ทำไฟล์ Jupyter สำหรับ Kaggle แทน",
+      "lesson": "ผู้ใช้ชอบให้ลงมือทำมากกว่าตอบคำถามวินิจฉัย — ถ้าต้องถาม ควรเสนอ 'ทางเริ่มต้นที่จะทำเลยถ้าไม่ตอบ' ไปพร้อมกัน",
+      "tags": [
+        "handoff",
+        "continue",
+        "echovision",
+        "f1",
+        "next step"
+      ]
+    },
+    {
+      "id": "echovision-kaggle-notebook",
+      "source": "claude-history",
+      "session": "New session (EchoVision)",
+      "date": "2026-09-03",
+      "project": "Nextgen · EchoVision Day 1",
+      "question": "ทำ เอาไฟล์ Jupyter มาให้ train ใน Kaggle (แนบ PDF โจทย์ EchoVision Day 1)",
+      "variants": [
+        "ขอไฟล์ ipynb ไปรันบน kaggle",
+        "ทำ notebook สำหรับ kaggle ให้หน่อย",
+        "อยากได้ jupyter notebook ไว้เทรน",
+        "kaggle notebook image audio multimodal",
+        "เอาไฟล์มาให้รันเลย"
+      ],
+      "needs": [
+        "deliverable"
+      ],
+      "real_need": "ไฟล์ .ipynb ไฟล์เดียวที่อัปขึ้น Kaggle แล้วกด Run All ได้ผล submission ทันที",
+      "answer": "ส่ง `EchoVision_Day1_Kaggle.ipynb` — ทำนาย 4 อย่างจากภาพ + เสียง ultrasonic:\n\n| เป้าหมาย | metric | น้ำหนัก |\n|---|---|---|\n| Object_Type | macro F1 | 0.40 |\n| distance | 1 − RMSE/2 | 0.30 |\n| Location_Zone | macro F1 | 0.20 |\n| Illumination | macro F1 | 0.10 |\n\nวิธีรัน: Kaggle → `+ Add Input` (dataset ของโจทย์) → เปิด GPU → Run All → ผลอยู่ที่ `/kaggle/working/` (`submission_day1.csv`, `submission_day1_safe.csv`, `echovision_day1.pth`)\n\nโครงโมเดล (เขียนเอง เทรนจากศูนย์): image CNN (Conv-BN-SiLU ×5) + audio CNN บน log-mel + ฟีเจอร์ echo → fusion MLP → 5 หัว (object / zone / illumination / distance-regression / distance-bin)\n\nกันพลาด: หาโฟลเดอร์ dataset อัตโนมัติ, ใช้ชื่อไฟล์เสียงจากคอลัมน์เท่านั้น (ห้ามประกอบชื่อเอง), **ไม่ augment ความสว่าง** เพราะ Illumination คือ label, เลือก checkpoint ด้วยคะแนนรวมบน val, TTA + ensemble หลาย seed, จูนน้ำหนักต่อคลาสเพื่อดัน macro F1, ตรวจไฟล์ submission ก่อนส่ง",
+      "outcome": "ส่งไฟล์ให้ในแชท เอาขึ้น Kaggle ได้เลย; push ขึ้น GitHub ไม่ได้ (403)",
+      "lesson": "ผู้ใช้ต้องการ 'ไฟล์' — ส่งไฟล์ในแชททันทีโดยไม่รอ push ช่วยให้งานเดินต่อได้",
+      "tags": [
+        "kaggle",
+        "jupyter",
+        "ipynb",
+        "multimodal",
+        "audio",
+        "ultrasonic",
+        "echovision",
+        "macro f1",
+        "rmse",
+        "submission"
+      ]
+    },
+    {
+      "id": "echovision-signals",
+      "source": "claude-history",
+      "session": "New session (EchoVision)",
+      "date": "2026-09-05",
+      "project": "Nextgen · EchoVision Day 1",
+      "question": "พวก signal ต่างๆ มันใช้ได้ไหม",
+      "variants": [
+        "ฟีเจอร์พวกนี้ใช้ได้จริงไหม",
+        "เสียงช่วยทำนายระยะได้ไหม",
+        "ข้อมูลแต่ละตัวมีประโยชน์ไหม",
+        "is the audio signal useful",
+        "เช็คว่า feature ไหนมีผลจริง"
+      ],
+      "needs": [
+        "verify"
+      ],
+      "real_need": "รู้ว่าควรทุ่มแรงกับข้อมูลส่วนไหน — ต้องการหลักฐานเป็นตัวเลข ไม่ใช่ความเห็น",
+      "answer": "ยังตอบ 'ใช้ได้ไหม' แบบฟันธงไม่ได้ เพราะไม่มีข้อมูลจริงในเครื่อง — จึงให้เครื่องมือวัดที่พิมพ์คำตอบเองตอนรัน\n\n**ที่รู้แน่จาก PDF:** เสียงสังเคราะห์จาก depth map → เวลาที่ echo กลับมา (ToF) ≈ distance ตรง ๆ = signal แรงสุด (คะแนน 30%)\n\n**บั๊กที่เจอ:** ฟีเจอร์ echo เดิมวัดบน mel frame — 1 mel-frame ≈ **1.3 เมตร** ขณะที่ 1 sample ≈ **0.7 ซม.** → ของเดิมทิ้ง signal ที่แรงที่สุด\n\n**แก้:** วัด timing 9 ค่าบน waveform ระดับ sample + envelope 256 จุดเข้า 1D CNN + fit ToF → distance แล้ว blend 3 ทาง (หัว regression / หัว bin / ToF) บน val; ห้าม augment แกนเวลาของเสียง\n\n**diag cell:** วัด 'พื้นล่าง' ของทุก target ด้วย nearest-centroid / linear fit (numpy ล้วน) เทียบกับเดาสุ่ม\n\n**อ่านผล ToF (val RMSE):** < 0.3 → distance ได้เกือบเต็ม · 0.3–1.0 → มีของ ให้ CNN ต่อยอด · > 1.0 → เสียงไม่ช่วย ต้องพึ่งภาพ",
+      "outcome": "ได้ notebook ตัวใหม่ + diag cell ส่งในแชท",
+      "lesson": "คำถาม 'ใช้ได้ไหม' ตอบดีที่สุดด้วย (1) บอกตรง ๆ ว่ารู้อะไร/ไม่รู้อะไร (2) วิธีวัดที่รันได้ (3) เกณฑ์อ่านผลเป็นตัวเลข",
+      "tags": [
+        "signal",
+        "feature",
+        "audio",
+        "tof",
+        "time of flight",
+        "distance",
+        "diagnostic",
+        "baseline",
+        "mel",
+        "echovision"
+      ]
+    },
+    {
+      "id": "github-push-403",
+      "source": "claude-history",
+      "session": "ทั้ง 2 เซสชัน (เกิดซ้ำ 5 ครั้ง)",
+      "date": "2026-09-03",
+      "project": "GitHub · TEAMNAJAA/Nextgen",
+      "question": "ทำไม push ขึ้น GitHub ไม่ได้ (403: Claude doesn't have GitHub access to TEAMNAJAA/Nextgen)",
+      "variants": [
+        "push ไม่ได้",
+        "git push error 403",
+        "Claude push ขึ้น github ไม่ได้",
+        "Resource not accessible by integration",
+        "ทำไมโค้ดไม่ขึ้น repo",
+        "permission denied github"
+      ],
+      "needs": [
+        "unblock"
+      ],
+      "real_need": "อยากให้งานขึ้น repo ได้ หรืออย่างน้อยไม่ให้งานหาย",
+      "answer": "**สาเหตุ:** ไม่ใช่ปัญหาโค้ดหรือ network แต่เป็นสิทธิ์ — Claude GitHub App ยังไม่มีสิทธิ์ **เขียน** repo ใน org TEAMNAJAA (อ่านได้ แต่ทุก write ได้ `403 Resource not accessible by integration`)\n\n**วิธีแก้ (admin ของ org ทำ):**\n1. ติดตั้ง Claude GitHub App พร้อมสิทธิ์เขียนที่ https://github.com/apps/claude/installations/select_target แล้วเลือก repo ที่ต้องการ\n2. หรือ reconnect GitHub ที่ claude.ai → Settings → Connectors\n\n**ระหว่างรอ:** โหลดไฟล์ที่ Claude ส่งในแชท (notebook / tarball) ไปใช้หรือ push เองได้เลย — container ของเซสชันจะถูกเก็บคืน งานที่ไม่ได้ push จะหาย\n\n**อัปเดต 12 ต.ค. 2026:** repo ใน org TEAMNAJAA (รวม Nextgen และ raburd) แสดงสิทธิ์ push ได้แล้ว",
+      "outcome": "เกิดซ้ำใน 5 เทิร์น ผู้ใช้รับไฟล์ทางแชทแทน; ต่อมาแก้สิทธิ์แล้ว",
+      "lesson": "ปัญหาสิทธิ์ให้บอกครั้งเดียวให้ชัดว่าใครต้องทำอะไร แล้วอย่าเอามาปนกับคำตอบเรื่องอื่นทุกเทิร์น",
+      "tags": [
+        "github",
+        "git",
+        "push",
+        "403",
+        "permission",
+        "github app",
+        "teamnajaa",
+        "error"
+      ]
+    },
+    {
+      "id": "raburd-website",
+      "source": "claude-history",
+      "session": "เว็บไซต์ตอบคำถามจากประวัติการใช้งาน",
+      "date": "2026-10-12",
+      "project": "raburd",
+      "question": "ทำเว็บไซต์ที่ตอบคำถามที่มนุษย์ต้องการอย่างถูกต้อง โดยเอาข้อมูลจากการใช้งานจริงมาอ้างอิงความต้องการของคำถามที่มนุษย์ถาม ใช้ข้อมูลจากประวัติการใช้ Claude ของผู้ใช้นี้ด้วย",
+      "variants": [
+        "ทำเว็บถามตอบที่อ้างอิงประวัติการใช้งานจริง",
+        "สร้างเว็บตอบคำถามจากข้อมูลการใช้งาน",
+        "เว็บที่รู้ว่าคนถามต้องการอะไร",
+        "build a q&a website grounded in real usage history"
+      ],
+      "needs": [
+        "deliverable"
+      ],
+      "real_need": "ระบบถาม-ตอบที่ไม่ได้ตอบแค่ตามตัวอักษร แต่ตีความว่าผู้ถามต้องการอะไรจริง โดยมีหลักฐานจากการใช้งานจริง และใช้ประวัติการใช้ Claude ของตัวเองเป็นข้อมูลตั้งต้น",
+      "answer": "สร้างเว็บ raburd (Node.js + Claude API):\n\n- ฐานความรู้ตั้งต้น = คำถามจริงจากประวัติการใช้ Claude ของผู้ใช้ สรุปเป็นเคส (คำถาม / ความต้องการจริง / คำตอบ / บทเรียน)\n- ทุกคำถามใหม่: ค้นเคสจริงที่คล้าย → อ่านความต้องการ → ให้ Claude ตอบตามรูปแบบที่ต้องการ พร้อมอ้างเคส\n- ปุ่มโหวต 'ตรงความต้องการไหม' เก็บเป็นข้อมูลการใช้งานจริง แล้วนำกลับมาใช้อ้างอิงคำถามถัดไป\n- ไม่มี API key ก็ใช้ได้: ตอบจากฐานความรู้ และไม่เดาเมื่อไม่มีเคสที่ใกล้พอ",
+      "outcome": "สร้างเว็บนี้",
+      "lesson": "",
+      "tags": [
+        "website",
+        "raburd",
+        "qa",
+        "real usage",
+        "intent",
+        "claude history"
+      ]
+    },
+    {
+      "id": "how-raburd-works",
+      "source": "docs",
+      "session": "คู่มือเว็บ raburd",
+      "date": "2026-10-12",
+      "project": "raburd",
+      "question": "เว็บนี้รู้ได้ยังไงว่าผู้ถามต้องการอะไร",
+      "variants": [
+        "เว็บนี้ทำงานยังไง",
+        "raburd คืออะไร",
+        "ระบบอ่านความต้องการยังไง",
+        "ทำไมเว็บถึงตอบแบบนี้",
+        "how does this site work"
+      ],
+      "needs": [
+        "explain"
+      ],
+      "real_need": "เข้าใจว่าระบบตัดสินใจอย่างไร จะได้เชื่อถือหรือแก้ไขได้",
+      "answer": "ทุกครั้งที่ถาม เว็บทำ 4 ขั้น:\n\n1. **ค้นเคสจริง** — หาคำถามในอดีตที่คล้ายที่สุด ทั้งจากประวัติการใช้ Claude และคำถามที่เคยถามในเว็บนี้ (ตัดคำไทย + n-gram ตัวอักษร, ความคล้ายวัดจากวิธีถามที่ใกล้ที่สุดของแต่ละเคส)\n2. **อ่านความต้องการ** — จัดว่าผู้ถามต้องการอะไร (ของที่ใช้ได้ทันที / แบบง่าย / สั้น / หลักฐานว่าใช้ได้ / ทำต่อ / แก้ error / อธิบาย / ช่วยเลือก) จาก 3 แหล่ง: คำสัญญาณในคำถาม, ความต้องการจริงของเคสที่คล้ายกัน, และผลโหวตย้อนหลัง\n3. **ตอบ** — ส่งความต้องการ + เคสอ้างอิงให้ Claude ตอบตามรูปแบบที่ตรงความต้องการ และอ้าง [เคส: id] เมื่อใช้ข้อมูลจากเคส (ไม่มี API key จะตอบจากฐานความรู้ และไม่เดาถ้าไม่มีเคสที่ใกล้พอ)\n4. **เรียนรู้** — กด 'ตรงความต้องการ' หรือบอกว่าจริง ๆ ต้องการอะไร → กลายเป็นข้อมูลการใช้งานจริงที่ใช้อ้างอิงคำถามถัดไป\n\nทุกคำตอบแสดงเหตุผลของการอ่านความต้องการและเคสที่ใช้อ้างอิง ตรวจสอบได้เสมอ",
+      "outcome": "",
+      "lesson": "",
+      "tags": [
+        "website",
+        "raburd",
+        "how it works",
+        "intent",
+        "need detection",
+        "retrieval"
+      ]
+    },
+    {
+      "id": "import-more-history",
+      "source": "docs",
+      "session": "คู่มือเว็บ raburd",
+      "date": "2026-10-12",
+      "project": "raburd",
+      "question": "จะเอาประวัติแชท Claude เพิ่มเข้ามาในเว็บได้ยังไง",
+      "variants": [
+        "import ประวัติ claude",
+        "เพิ่มข้อมูลแชทเก่า",
+        "export conversations.json จาก claude.ai",
+        "นำเข้า transcript claude code"
+      ],
+      "needs": [
+        "explain",
+        "deliverable"
+      ],
+      "real_need": "ให้เว็บรู้จักคำถามจริงมากขึ้น",
+      "answer": "รองรับ 2 แหล่ง:\n\n1. **claude.ai** — Settings → Privacy → Export data จะได้ไฟล์ zip ที่มี `conversations.json`\n2. **Claude Code** — ไฟล์ `~/.claude/projects/<โปรเจกต์>/*.jsonl`\n\nแล้วรัน:\n\n```bash\nnpm run import-history -- path/to/conversations.json\nnpm run import-history -- ~/.claude/projects/my-project/\n```\n\nสคริปต์จะจับคู่ คำถาม → คำตอบสุดท้าย, ลบอีเมล/คีย์/โทเค็นออก, เดาประเภทความต้องการ แล้วเขียนลง `data/knowledge/imported.json` (ใส่ `--dry-run` เพื่อดูก่อน) — รีสตาร์ตเซิร์ฟเวอร์เพื่อโหลด",
+      "outcome": "",
+      "lesson": "",
+      "tags": [
+        "import",
+        "history",
+        "claude.ai",
+        "export",
+        "claude code",
+        "jsonl",
+        "conversations.json"
+      ]
+    }
+  ]
+}
